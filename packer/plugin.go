@@ -152,8 +152,7 @@ func (c *PluginConfig) DiscoverMultiPlugin(pluginName, pluginPath string) error 
 		c.Builders.Set(key, func() (packersdk.Builder, error) {
 			return c.Client(pluginPath, "start", "builder", builderName).Builder()
 		})
-		GlobalPluginsDetailsStore.Set(fmt.Sprintf("%q-%q", PluginComponentBuilder, key), pluginDetails)
-
+		GlobalPluginsDetailsStore.SetBuilder(key, pluginDetails)
 	}
 
 	if len(desc.Builders) > 0 {
@@ -169,7 +168,7 @@ func (c *PluginConfig) DiscoverMultiPlugin(pluginName, pluginPath string) error 
 		c.PostProcessors.Set(key, func() (packersdk.PostProcessor, error) {
 			return c.Client(pluginPath, "start", "post-processor", postProcessorName).PostProcessor()
 		})
-		GlobalPluginsDetailsStore.Set(fmt.Sprintf("%q-%q", PluginComponentPostProcessor, key), pluginDetails)
+		GlobalPluginsDetailsStore.SetPostProcessor(key, pluginDetails)
 	}
 
 	if len(desc.PostProcessors) > 0 {
@@ -185,7 +184,7 @@ func (c *PluginConfig) DiscoverMultiPlugin(pluginName, pluginPath string) error 
 		c.Provisioners.Set(key, func() (packersdk.Provisioner, error) {
 			return c.Client(pluginPath, "start", "provisioner", provisionerName).Provisioner()
 		})
-		GlobalPluginsDetailsStore.Set(fmt.Sprintf("%q-%q", PluginComponentProvisioner, key), pluginDetails)
+		GlobalPluginsDetailsStore.SetProvisioner(key, pluginDetails)
 
 	}
 	if len(desc.Provisioners) > 0 {
@@ -201,7 +200,7 @@ func (c *PluginConfig) DiscoverMultiPlugin(pluginName, pluginPath string) error 
 		c.DataSources.Set(key, func() (packersdk.Datasource, error) {
 			return c.Client(pluginPath, "start", "datasource", datasourceName).Datasource()
 		})
-		GlobalPluginsDetailsStore.Set(fmt.Sprintf("%q-%q", PluginComponentDataSource, key), pluginDetails)
+		GlobalPluginsDetailsStore.SetDataSource(key, pluginDetails)
 	}
 	if len(desc.Datasources) > 0 {
 		log.Printf("found external %v datasource from %s plugin", desc.Datasources, pluginName)
@@ -269,26 +268,64 @@ type PluginDetails struct {
 	PluginPath  string
 }
 
-type PluginsDetailsStorage struct {
+type pluginsDetailsStorage struct {
 	rwMutex sync.RWMutex
 	data    map[string]PluginDetails
 }
 
-var GlobalPluginsDetailsStore = &PluginsDetailsStorage{
+var GlobalPluginsDetailsStore = &pluginsDetailsStorage{
 	data: make(map[string]PluginDetails),
 }
 
-func (pds *PluginsDetailsStorage) Set(key string, plugin PluginDetails) {
+func (pds *pluginsDetailsStorage) set(key string, plugin PluginDetails) {
 	pds.rwMutex.Lock()
 	defer pds.rwMutex.Unlock()
-	if _, exists := pds.data[key]; !exists {
-		pds.data[key] = plugin
-	}
+	pds.data[key] = plugin
 }
 
-func (pds *PluginsDetailsStorage) Get(key string) (PluginDetails, bool) {
+func (pds *pluginsDetailsStorage) get(key string) (PluginDetails, bool) {
 	pds.rwMutex.RLock()
 	defer pds.rwMutex.RUnlock()
 	plugin, exists := pds.data[key]
 	return plugin, exists
+}
+
+func (pds *pluginsDetailsStorage) SetBuilder(name string, plugin PluginDetails) {
+	key := fmt.Sprintf("%q-%q", PluginComponentBuilder, name)
+	pds.set(key, plugin)
+}
+
+func (pds *pluginsDetailsStorage) GetBuilder(name string) (PluginDetails, bool) {
+	key := fmt.Sprintf("%q-%q", PluginComponentBuilder, name)
+	return pds.get(key)
+}
+
+func (pds *pluginsDetailsStorage) SetPostProcessor(name string, plugin PluginDetails) {
+	key := fmt.Sprintf("%q-%q", PluginComponentPostProcessor, name)
+	pds.set(key, plugin)
+}
+
+func (pds *pluginsDetailsStorage) GetPostProcessor(name string) (PluginDetails, bool) {
+	key := fmt.Sprintf("%q-%q", PluginComponentPostProcessor, name)
+	return pds.get(key)
+}
+
+func (pds *pluginsDetailsStorage) SetProvisioner(name string, plugin PluginDetails) {
+	key := fmt.Sprintf("%q-%q", PluginComponentProvisioner, name)
+	pds.set(key, plugin)
+}
+
+func (pds *pluginsDetailsStorage) GetProvisioner(name string) (PluginDetails, bool) {
+	key := fmt.Sprintf("%q-%q", PluginComponentProvisioner, name)
+	return pds.get(key)
+}
+
+func (pds *pluginsDetailsStorage) SetDataSource(name string, plugin PluginDetails) {
+	key := fmt.Sprintf("%q-%q", PluginComponentDataSource, name)
+	pds.set(key, plugin)
+}
+
+func (pds *pluginsDetailsStorage) GetDataSource(name string) (PluginDetails, bool) {
+	key := fmt.Sprintf("%q-%q", PluginComponentDataSource, name)
+	return pds.get(key)
 }
