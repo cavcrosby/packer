@@ -252,6 +252,94 @@ func TestProvisionerPrepare_EnvironmentVars(t *testing.T) {
 	}
 }
 
+func TestProvisionerPrepare_ConflictingInputs(t *testing.T) {
+	var p Provisioner
+
+	tf, err := os.CreateTemp("", "packer")
+	if err != nil {
+		t.Fatalf("error tempfile: %s", err)
+	}
+	defer os.Remove(tf.Name())
+
+	expectedError := "1 error(s) occurred:\n\n* Exactly one of 'inline', 'script', 'scripts', or 'content' must be specified."
+
+	testCases := map[string]struct {
+		inline  []interface{}
+		script  string
+		scripts []interface{}
+		content string
+	}{
+		"inline and script":   {inline: []interface{}{"foo"}, script: tf.Name()},
+		"inline and scripts":  {inline: []interface{}{"foo"}, scripts: []interface{}{tf.Name()}},
+		"inline and content":  {inline: []interface{}{"foo"}, content: "foo"},
+		"script and scripts":  {script: tf.Name(), scripts: []interface{}{tf.Name()}},
+		"script and content":  {script: tf.Name(), content: "foo"},
+		"scripts and content": {scripts: []interface{}{tf.Name()}, content: "foo"},
+		"none":                {},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			config := testConfig()
+			delete(config, "inline")
+			if tc.inline != nil {
+				config["inline"] = tc.inline
+			}
+			if tc.script != "" {
+				config["script"] = tc.script
+			}
+			if tc.scripts != nil {
+				config["scripts"] = tc.scripts
+			}
+			if tc.content != "" {
+				config["content"] = tc.content
+			}
+			err := p.Prepare(config)
+			if err == nil {
+				t.Fatal("should have error")
+			}
+			if err.Error() != expectedError {
+				t.Fatalf("expected error:\n%s\nreceived error:\n%s\n", expectedError, err.Error())
+			}
+		})
+	}
+}
+
+func TestProvisionerPrepare_Content(t *testing.T) {
+	config := testConfig()
+	delete(config, "inline")
+
+	content := `
+	  #! /usr/bin/env bash
+	  echo "hello"
+	  exit 0
+	  `
+
+	config["content"] = content
+
+	p := new(Provisioner)
+	err := p.Prepare(config)
+	if err != nil {
+		t.Fatalf("should not have error: %s", err)
+	}
+
+	if len(p.config.Scripts) != 1 {
+		t.Fatal("a packer-generated tempfile should now be the element in p.config.Scripts")
+	}
+
+	tempfile := p.config.Scripts[0]
+	defer os.Remove(tempfile)
+
+	result, err := os.ReadFile(tempfile)
+	if err != nil {
+		t.Fatalf("should not have error: %s", err)
+	}
+
+	if string(result) != content {
+		t.Fatalf("content of file %s was not as expected", tempfile)
+	}
+}
+
 func TestProvisioner_createFlattenedEnvVars(t *testing.T) {
 	var flattenedEnvVars string
 	config := testConfig()
