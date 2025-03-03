@@ -20,6 +20,11 @@ Exactly _one_ of the following is required:
   executed in isolation, so state such as variables from one script won't
   carry on to the next.
 
+- `content` (string) - This content will be written and executed as-is.
+  It will be saved to a file and run without modifications. Please ensure
+  that all necessary dependencies on the target system are already installed
+  for successful execution.
+
 Optional parameters:
 
 - `binary` (boolean) - If true, specifies that the script(s) are binary
