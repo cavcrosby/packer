@@ -35,6 +35,11 @@ type Config struct {
 
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
+	// This is the content to write to a temporary file.
+	// A template_file might be referenced in here, or any interpolation syntax.
+	// This attribute cannot be specified with Inline, Script, or Scripts.
+	Content string `mapstructure:"content"`
+
 	// The shebang value used when running inline scripts.
 	InlineShebang string `mapstructure:"inline_shebang"`
 
@@ -140,21 +145,41 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	var errs *packersdk.MultiError
-	if p.config.Script != "" && len(p.config.Scripts) > 0 {
+	var scriptSourceCount int
+
+	if p.config.Inline != nil {
+		scriptSourceCount++
+	}
+	if p.config.Script != "" {
+		scriptSourceCount++
+	}
+	if len(p.config.Scripts) > 0 {
+		scriptSourceCount++
+	}
+	if p.config.Content != "" {
+		scriptSourceCount++
+	}
+
+	if scriptSourceCount != 1 {
 		errs = packersdk.MultiErrorAppend(errs,
-			errors.New("Only one of script or scripts can be specified."))
+			errors.New("Exactly one of 'inline', 'script', 'scripts', or 'content' must be specified."))
 	}
 
 	if p.config.Script != "" {
 		p.config.Scripts = []string{p.config.Script}
 	}
 
-	if len(p.config.Scripts) == 0 && p.config.Inline == nil {
-		errs = packersdk.MultiErrorAppend(errs,
-			errors.New("Either a script file or inline script must be specified."))
-	} else if len(p.config.Scripts) > 0 && p.config.Inline != nil {
-		errs = packersdk.MultiErrorAppend(errs,
-			errors.New("Only a script file or an inline script can be specified, not both."))
+	if p.config.Content != "" {
+		file, err := tmp.File("packer-shell")
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		if _, err := file.WriteString(p.config.Content); err != nil {
+			return err
+		}
+		p.config.Scripts = []string{file.Name()}
 	}
 
 	for _, path := range p.config.Scripts {
